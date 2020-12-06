@@ -15,6 +15,9 @@ import torch.nn as nn
 
 from torch.utils.tensorboard import SummaryWriter
 from collections import deque
+from datetime    import datetime as dt
+
+import pdb
 
 logging.basicConfig(level=logging.DEBUG)
 # -----------------------------------------------
@@ -141,7 +144,7 @@ class DQN:
         with torch.no_grad():
            qs_next     = self._target_net(next_state)               # (N, act_dim)
            q_next, act = torch.max(qs_next, dim=-1, keepdim=True)   # (N, 1)
-           q_target = q_next*tocont + reward
+           q_target    = q_next*tocont + reward
 
         loss = self._criteria(q_value, q_target)
 
@@ -280,11 +283,11 @@ def main():
     parser.add_argument('--capacity', default=10000, type=int)
     parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--lr', default=.0005, type=float)
-    parser.add_argument('--eps_decay', default=.995, type=float)
+    parser.add_argument('--eps_decay', default=.99982, type=float)
     parser.add_argument('--eps_min', default=.01, type=float)
     parser.add_argument('--gamma', default=.99, type=float)
     parser.add_argument('--freq', default=4, type=int)
-    parser.add_argument('--target_freq', default=1000, type=int)
+    parser.add_argument('--target_freq', default=10000, type=int)
     # test
     parser.add_argument('--test_only', action='store_true')
     parser.add_argument('--render', action='store_true')
@@ -295,7 +298,7 @@ def main():
     ## main ##
     env_name = 'LunarLander-v2'
     agent = DQN(args)
-    writer = SummaryWriter(args.logdir)
+    writer = SummaryWriter(f'log/DQN-{time.time()}')
     if not args.test_only:
         train(args, env_name, agent, writer)
         agent.save(args.model)
