@@ -78,7 +78,10 @@ class DQN:
         # -------------------------------------------
         self._target_net.load_state_dict(self._behavior_net.state_dict())
 
-        self._optimizer = torch.optim.RMSprop(lr=args.lr)
+        self._optimizer = torch.optim.RMSprop(
+                            self._behavior_net.parameters(), 
+                            lr=args.lr
+                          )
         self._criteria  = nn.MSELoss()
         # memory
         self._memory    = ReplayMemory(capacity=args.capacity)
@@ -94,6 +97,7 @@ class DQN:
         '''
             - state: (state_dim, )
         '''
+        state  = torch.tensor(state).to(self.device)
         state  = DQN.reshape_input_state(state)
         qvars  = self._behavior_net(state)      # (1, act_dim)
         action = torch.argmax(qvars, dim=-1)    # (1, )
@@ -107,9 +111,9 @@ class DQN:
             -state = (state_dim, )
         '''
         if random.random() < epsilon:
-            return np.random.randint(0, action_space, size=1)[0]
+            return action_space.sample()
         else:
-            return select_best_action(state)
+            return self.select_best_action(state)
 
     def append(self, state, action, reward, next_state, done):
         self._memory.append(
@@ -129,15 +133,15 @@ class DQN:
     def _update_behavior_network(self, gamma):
         # sample a minibatch of transitions
         ret = self._memory.sample(self.batch_size, self.device)
-        state, action, reward, next_state, 2cont = ret 
+        state, action, reward, next_state, tocont = ret 
 
-        q_values      = self._behavior_net(state)       # (N, act_dim)
-        q_value, act  = torch.max(q_values, dim=-1)     # (N, )
+        q_values      = self._behavior_net(state)                     # (N, act_dim)
+        q_value, act  = torch.max(q_values, dim=-1, keepdim=True)     # (N, 1)
 
         with torch.no_grad():
-           qs_next     = self._target_net(next_state)   # (N, act_dim)
-           q_next, act = torch.max(qs_next, dim=-1)
-           q_target = q_next + reward
+           qs_next     = self._target_net(next_state)               # (N, act_dim)
+           q_next, act = torch.max(qs_next, dim=-1, keepdim=True)   # (N, 1)
+           q_target = q_next*tocont + reward
 
         loss = self._criteria(q_value, q_target)
 
@@ -198,6 +202,9 @@ def train(args, env_name, agent, writer):
         state        = env.reset()
 
         for t in itertools.count(start=1):
+            if args.render and episode > 700:
+                env.render()
+                time.sleep(0.0082)
             # select action
             if total_steps < args.warmup:
                 action = action_space.sample()
@@ -244,6 +251,8 @@ def test(args, env_name, agent, writer):
         state = env.reset()
 
         for t in itertools.count(start=1):
+            env.render()
+            time.sleep(0.03)
             #action = agent.select_action(state, epsilon, action_space)
             action = agent.select_best_action(state)
             # execute action
@@ -251,7 +260,6 @@ def test(args, env_name, agent, writer):
 
             state         = next_state
             total_reward += reward
-            total_steps  += 1
 
             if done:
                 writer.add_scalar('Test/Episode Reward', total_reward, n_episode)
