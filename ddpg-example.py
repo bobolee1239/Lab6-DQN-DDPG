@@ -1,18 +1,27 @@
 '''DLP DDPG Lab'''
-__author__ = 'chengscott'
+__author__ = 'brian-th.lee'
 __copyright__ = 'Copyright 2020, NCTU CGI Lab'
-import argparse
-from collections import deque
-import itertools
-import random
-import time
-
+# --------------------------------------------------
 import gym
-import numpy as np
+import time
 import torch
-import torch.nn as nn
-from torch.utils.tensorboard import SummaryWriter
+import random
+import logging
+import argparse
+import itertools
 
+import numpy    as np
+import torch.nn as nn
+
+from torch.utils.tensorboard import SummaryWriter
+from collections import deque
+from datetime    import datetime as dt
+
+import pdb
+
+logging.basicConfig(level=logging.DEBUG)
+
+# --------------------------------------------------------
 
 class GaussianNoise:
     def __init__(self, dim, mu=None, std=None):
@@ -38,8 +47,9 @@ class ReplayMemory:
 
     def sample(self, batch_size, device):
         '''sample a batch of transition tensors'''
-        ## TODO ##
-        raise NotImplementedError
+        transitions = random.sample(self.buffer, batch_size)
+        return (torch.tensor(x, dtype=torch.float, device=device)
+                for x in zip(*transitions))
 
 
 class ActorNet(nn.Module):

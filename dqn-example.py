@@ -287,6 +287,7 @@ def test(args, env_name, agent, writer):
 
             if done:
                 writer.add_scalar('Test/Episode Reward', total_reward, n_episode)
+                rewards.append(total_reward)
                 break
     logging.info('  - Average Reward', np.mean(rewards))
     env.close()
