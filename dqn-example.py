@@ -43,7 +43,7 @@ class ReplayMemory:
 
 
 class Net(nn.Module):
-    def __init__(self, state_dim=8, action_dim=4, hidden_dim=32):
+    def __init__(self, state_dim=8, action_dim=4, hidden_dim=128):
         super(Net, self).__init__()
 
         self.act = nn.ReLU()
@@ -66,8 +66,8 @@ class Net(nn.Module):
 
         advantage = self.adv(h2)
         value     = self.var(h2)
-        avg_adv   = torch.mean(advantage, dim=-1, keepdim=True)
-        Q_value   = value + advantage - avg_adv
+        avg_adv   = advantage - advantage.mean()
+        Q_value   = value + avg_adv
 
         return Q_value
 
@@ -100,10 +100,16 @@ class DQN:
         '''
             - state: (state_dim, )
         '''
-        state  = torch.tensor(state).to(self.device)
+        during_train = self._behavior_net.training
+        if during_train:
+            self.eval()
+        state  = torch.Tensor(state).to(self.device)
         state  = DQN.reshape_input_state(state)
         qvars  = self._behavior_net(state)      # (1, act_dim)
         action = torch.argmax(qvars, dim=-1)    # (1, )
+
+        if during_train:
+            self.train()
 
         return action.item()
 
@@ -129,22 +135,21 @@ class DQN:
 
     def update(self, total_steps):
         if total_steps % self.freq == 0:
-            self._update_behavior_network(self.gamma)
+            return self._update_behavior_network(self.gamma)
         if total_steps % self.target_freq == 0:
-            self._update_target_network()
+            return self._update_target_network()
 
     def _update_behavior_network(self, gamma):
         # sample a minibatch of transitions
         ret = self._memory.sample(self.batch_size, self.device)
         state, action, reward, next_state, tocont = ret 
 
-        q_values      = self._behavior_net(state)                     # (N, act_dim)
-        q_value, act  = torch.max(q_values, dim=-1, keepdim=True)     # (N, 1)
-
+        q_values = self._behavior_net(state)                                    # (N, act_dim)
+        q_value  = torch.gather(input=q_values, dim=-1, index=action.long())    # (N, 1)
         with torch.no_grad():
            qs_next     = self._target_net(next_state)               # (N, act_dim)
            q_next, act = torch.max(qs_next, dim=-1, keepdim=True)   # (N, 1)
-           q_target    = q_next*tocont + reward
+           q_target    = gamma*q_next*tocont + reward
 
         loss = self._criteria(q_value, q_target)
 
@@ -154,11 +159,14 @@ class DQN:
         nn.utils.clip_grad_norm_(self._behavior_net.parameters(), 5)
         self._optimizer.step()
 
+        return loss.item()
+
     def _update_target_network(self):
         '''
         update target network by copying from behavior network
         '''
         self._target_net.load_state_dict(self._behavior_net.state_dict())
+        return None
 
     def save(self, model_path, checkpoint=False):
         if checkpoint:
@@ -179,6 +187,14 @@ class DQN:
         if checkpoint:
             self._target_net.load_state_dict(model['target_net'])
             self._optimizer.load_state_dict(model['optimizer'])
+
+    def train(self):
+        self._behavior_net.train()
+        self._target_net.eval()
+
+    def eval(self):
+        self._behavior_net.eval()
+        self._target_net.eval()
     
     @staticmethod
     def reshape_input_state(state):
@@ -200,6 +216,7 @@ def train(args, env_name, agent, writer):
 
     total_steps, epsilon, ewma_reward = 0, 1., 0.
 
+    agent.train()
     for episode in range(args.episode):
         total_reward = 0
         state        = env.reset()
@@ -218,8 +235,9 @@ def train(args, env_name, agent, writer):
             next_state, reward, done, _ = env.step(action)
             # store transition
             agent.append(state, action, reward, next_state, done)
+            loss = None
             if total_steps >= args.warmup:
-                agent.update(total_steps)
+                loss = agent.update(total_steps)
 
             state         = next_state
             total_reward += reward
@@ -231,6 +249,9 @@ def train(args, env_name, agent, writer):
                                   total_steps)
                 writer.add_scalar('Train/Ewma Reward', ewma_reward,
                                   total_steps)
+                if loss is not None:
+                    writer.add_scalar('Train/Loss', loss,
+                                    total_steps)
                 logging.info(
                     '  - Step: {}\tEpisode: {}\tLength: {:3d}\tTotal reward: {:.2f}\tEwma reward: {:.2f}\tEpsilon: {:.3f}'
                     .format(total_steps, episode, t, total_reward, ewma_reward,
@@ -283,11 +304,11 @@ def main():
     parser.add_argument('--capacity', default=10000, type=int)
     parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--lr', default=.0005, type=float)
-    parser.add_argument('--eps_decay', default=.99982, type=float)
+    parser.add_argument('--eps_decay', default=.9982, type=float)
     parser.add_argument('--eps_min', default=.01, type=float)
     parser.add_argument('--gamma', default=.99, type=float)
     parser.add_argument('--freq', default=4, type=int)
-    parser.add_argument('--target_freq', default=10000, type=int)
+    parser.add_argument('--target_freq', default=500, type=int)
     # test
     parser.add_argument('--test_only', action='store_true')
     parser.add_argument('--render', action='store_true')
