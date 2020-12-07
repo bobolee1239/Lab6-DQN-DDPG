@@ -117,7 +117,7 @@ class DDPG:
         self._critic_opt = torch.optim.RMSprop(self._critic_net.parameters(), lr=args.lrc)
         self.mse_loss    = nn.MSELoss()
         # action noise
-        self._action_noise  = GaussianNoise(dim=2, mu=0.0, std=1.0)
+        self._action_noise  = GaussianNoise(dim=2, mu=0.0, std=0.2)
         self.nse_energy     = 1.0
         self.min_nse_energy = 0.1
         # memory
