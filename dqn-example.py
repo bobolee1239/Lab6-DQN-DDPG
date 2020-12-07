@@ -105,8 +105,9 @@ class DQN:
             self.eval()
         state  = torch.Tensor(state).to(self.device)
         state  = DQN.reshape_input_state(state)
-        qvars  = self._behavior_net(state)      # (1, act_dim)
-        action = torch.argmax(qvars, dim=-1)    # (1, )
+        with torch.no_grad():
+            qvars  = self._behavior_net(state)      # (1, act_dim)
+            action = torch.argmax(qvars, dim=-1)    # (1, )
 
         if during_train:
             self.train()
