@@ -87,18 +87,18 @@ class CriticNet(nn.Module):
         super().__init__()
         h1, h2 = hidden_dim
         self.critic_head = nn.Sequential(
-            nn.Linear(state_dim + action_dim, h1),
+            nn.Linear(state_dim, h1),
             nn.ReLU(),
         )
         self.critic = nn.Sequential(
-            nn.Linear(h1, h2),
+            nn.Linear(h1 + action_dim, h2),
             nn.ReLU(),
             nn.Linear(h2, 1),
         )
 
     def forward(self, x, action):
-        x = self.critic_head(torch.cat([x, action], dim=1))
-        return self.critic(x)
+        x = self.critic_head(x)
+        return self.critic(torch.cat([x, action], dim=1))
 
 
 class DDPG:
